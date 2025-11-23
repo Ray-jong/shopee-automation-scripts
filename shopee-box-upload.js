@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         蝦皮裝箱單批次上傳
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  自動批次上傳裝箱單號到蝦皮後台
 // @author       YourName
 // @match        https://sp.spx.shopee.tw/outbound-management/pack-drop-off-to/scan-to-new*
@@ -30,6 +30,7 @@
     // ========== 初始化 ==========
     async function init() {
         console.log('[裝箱單上傳] 開始初始化...');
+        console.log('[裝箱單上傳] 當前頁面:', window.location.href);
         
         // 1. 檢查 Token
         const token = getTokenFromUrl();
@@ -51,16 +52,7 @@
 
         console.log('[裝箱單上傳] Token 驗證通過');
 
-        // 3. 檢查蝦皮 Cookie
-        if (!checkShopeeCookie()) {
-            console.warn('[裝箱單上傳] 未偵測到蝦皮 Cookie');
-            showCookieWarning();
-            return;
-        }
-
-        console.log('[裝箱單上傳] Cookie 檢查通過');
-
-        // 4. 注入上傳介面
+        // 3. 直接注入上傳介面（移除 Cookie 檢查）
         injectUI();
 
         console.log('[裝箱單上傳] 初始化完成');
@@ -83,96 +75,6 @@
         }
     }
 
-    // ========== Cookie 檢查 ==========
-    function getCookie(name) {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) {
-            return parts.pop().split(';').shift();
-        }
-        return null;
-    }
-
-    function checkShopeeCookie() {
-        const spxCid = getCookie('spx_cid');
-        const spxSpCid = getCookie('spx_sp_cid');
-        const hasCookie = !!(spxCid || spxSpCid);
-        
-        console.log('[裝箱單上傳] Cookie 檢查:', {
-            spx_cid: spxCid ? '存在' : '不存在',
-            spx_sp_cid: spxSpCid ? '存在' : '不存在',
-            result: hasCookie
-        });
-        
-        return hasCookie;
-    }
-
-    function showCookieWarning() {
-        const warning = document.createElement('div');
-        warning.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            z-index: 10000;
-            max-width: 500px;
-            text-align: center;
-        `;
-        warning.innerHTML = `
-            <h3 style="color: #ff6b6b; margin-bottom: 20px;">⚠️ 需要登入蝦皮後台</h3>
-            <p style="margin-bottom: 20px;">系統偵測到您尚未登入蝦皮後台，無法使用此功能。</p>
-            <p style="margin-bottom: 20px;"><strong>請按照以下步驟操作：</strong></p>
-            <ol style="text-align: left; margin-bottom: 20px;">
-                <li>點擊下方的「前往登入」按鈕</li>
-                <li>在開啟的新分頁中完成登入</li>
-                <li>登入完成後關閉該分頁</li>
-                <li>回到此頁面，點擊「重新檢查」</li>
-            </ol>
-            <button id="loginBtn" style="
-                background: #4CAF50;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                margin: 5px;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 16px;
-            ">前往登入</button>
-            <button id="recheckBtn" style="
-                background: #2196F3;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                margin: 5px;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 16px;
-            ">重新檢查</button>
-        `;
-
-        document.body.appendChild(warning);
-
-        // 綁定事件
-        document.getElementById('loginBtn').onclick = () => {
-            const token = getTokenFromUrl();
-            window.open(`https://sp.spx.shopee.tw/inbound-management/receive-task?token=${token}`, '_blank');
-        };
-
-        document.getElementById('recheckBtn').onclick = () => {
-            if (checkShopeeCookie()) {
-                document.body.removeChild(warning);
-                injectUI();
-                alert('✅ 驗證成功！您現在可以使用此功能了。');
-            } else {
-                alert('❌ 仍未偵測到登入狀態，請確認已完成登入。');
-            }
-        };
-    }
-
     // ========== UI 注入 ==========
     function injectUI() {
         // 建立主容器
@@ -193,7 +95,7 @@
         container.innerHTML = `
             <div style="max-width: 1200px; margin: 0 auto;">
                 <h3 style="margin: 0 0 15px 0; color: #28a745;">
-                    📦 裝箱單批次上傳
+                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.2 - Cookie 檢測已移除)</span>
                 </h3>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;">
@@ -367,6 +269,7 @@
         // 開始上傳
         addLog('='.repeat(50));
         addLog(`開始上傳 ${lines.length} 筆裝箱單號`);
+        addLog(`API: ${CONFIG.SCAN_API}`);
         addLog('='.repeat(50));
 
         for (let i = 0; i < lines.length; i++) {
@@ -382,6 +285,11 @@
                 } else {
                     uploadStats.fail++;
                     addLog(`❌ 失敗: ${boxNumber} - ${result.message}`);
+                    
+                    // 記錄詳細錯誤資訊（用於除錯）
+                    if (result.details) {
+                        addLog(`   詳細資訊: ${JSON.stringify(result.details)}`);
+                    }
                 }
             } catch (error) {
                 uploadStats.fail++;
@@ -419,39 +327,55 @@
 
     async function uploadSingle(boxNumber) {
         try {
+            addLog(`   發送 API 請求...`);
+            
+            const requestBody = {
+                to_number: boxNumber,
+                rfid: '',
+                dest_station_name: 'SOC S',
+                to_path: '美廉社 仁武仁孝店 > SOC S',
+                ctime: Math.floor(Date.now() / 1000),
+                mtime: Math.floor(Date.now() / 1000)
+            };
+            
+            addLog(`   請求內容: ${JSON.stringify(requestBody)}`);
+            
             const response = await fetch(CONFIG.SCAN_API, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    to_number: boxNumber,
-                    rfid: '',
-                    dest_station_name: 'SOC S',
-                    to_path: '美廉社 仁武仁孝店 > SOC S',
-                    ctime: Math.floor(Date.now() / 1000),
-                    mtime: Math.floor(Date.now() / 1000)
-                })
+                body: JSON.stringify(requestBody)
             });
 
+            addLog(`   HTTP 狀態: ${response.status} ${response.statusText}`);
+
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                return { 
+                    success: false, 
+                    message: `HTTP ${response.status}`,
+                    details: { status: response.status, statusText: response.statusText }
+                };
             }
 
             const result = await response.json();
+            addLog(`   API 回應: ${JSON.stringify(result)}`);
 
             if (result.retcode === 0) {
                 return { success: true };
             } else {
                 return { 
                     success: false, 
-                    message: result.message || '未知錯誤' 
+                    message: result.message || '未知錯誤',
+                    details: result
                 };
             }
         } catch (error) {
+            addLog(`   例外錯誤: ${error.message}`);
             return { 
                 success: false, 
-                message: error.message 
+                message: error.message,
+                details: { error: error.toString() }
             };
         }
     }
@@ -490,14 +414,18 @@
             addLog('📊 統計資料已上傳');
         } catch (error) {
             console.error('[裝箱單上傳] 統計上傳失敗:', error);
+            addLog(`⚠️ 統計上傳失敗: ${error.message}`);
         }
     }
 
     // ========== 執行初始化 ==========
+    // 增加延遲確保頁面完全載入
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(init, 1000); // 延遲 1 秒
+        });
     } else {
-        init();
+        setTimeout(init, 1000); // 延遲 1 秒
     }
 
 })();
