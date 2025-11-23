@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         蝦皮裝箱單批次上傳
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  自動批次上傳裝箱單號到蝦皮後台
 // @author       YourName
-// @match        https://sp.spx.shopee.tw/inbound-management/box-to-management*
+// @match        https://sp.spx.shopee.tw/outbound-management/pack-drop-off-to/scan-to-new*
 // @grant        none
 // @icon         https://sp.spx.shopee.tw/favicon.ico
 // ==/UserScript==
@@ -29,9 +29,12 @@
 
     // ========== 初始化 ==========
     async function init() {
+        console.log('[裝箱單上傳] 開始初始化...');
+        
         // 1. 檢查 Token
         const token = getTokenFromUrl();
         if (!token) {
+            console.warn('[裝箱單上傳] 未找到 Token');
             alert('❌ 錯誤：未提供授權 Token\n\n請從系統主頁點擊按鈕進入此頁面。');
             return;
         }
@@ -41,6 +44,7 @@
         // 2. 驗證 Token
         const isValid = await validateToken(token);
         if (!isValid) {
+            console.warn('[裝箱單上傳] Token 驗證失敗');
             alert('❌ 錯誤：Token 驗證失敗\n\n您可能沒有權限使用此功能，請聯絡管理員。');
             return;
         }
@@ -49,9 +53,12 @@
 
         // 3. 檢查蝦皮 Cookie
         if (!checkShopeeCookie()) {
+            console.warn('[裝箱單上傳] 未偵測到蝦皮 Cookie');
             showCookieWarning();
             return;
         }
+
+        console.log('[裝箱單上傳] Cookie 檢查通過');
 
         // 4. 注入上傳介面
         injectUI();
@@ -89,7 +96,15 @@
     function checkShopeeCookie() {
         const spxCid = getCookie('spx_cid');
         const spxSpCid = getCookie('spx_sp_cid');
-        return !!(spxCid || spxSpCid);
+        const hasCookie = !!(spxCid || spxSpCid);
+        
+        console.log('[裝箱單上傳] Cookie 檢查:', {
+            spx_cid: spxCid ? '存在' : '不存在',
+            spx_sp_cid: spxSpCid ? '存在' : '不存在',
+            result: hasCookie
+        });
+        
+        return hasCookie;
     }
 
     function showCookieWarning() {
