@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         蝦皮裝箱單批次上傳
+// @name         蝦皮裝箱單批次上傳 (修正版)
 // @namespace    http://tampermonkey.net/
-// @version      1.4
-// @description  自動批次上傳裝箱單號到蝦皮後台
-// @author       OrgLife
+// @version      1.5
+// @description  自動批次上傳裝箱單號到蝦皮後台 (已修正 Payload 格式)
+// @author       OrgLife / Fixed by Gemini
 // @match        https://sp.spx.shopee.tw/outbound-management/pack-drop-off-to/scan-to-new*
 // @grant        none
 // @icon         https://sp.spx.shopee.tw/favicon.ico
@@ -14,10 +14,11 @@
 
     // ========== 配置區 ==========
     const CONFIG = {
+        // 若您不需要外部 Token 驗證，可將相關檢查移除，這裡保留您原本的架構
         VALIDATE_API: 'https://dev.orglife.com.tw/Api/DB?Type=Token&App=ShopeeBoxUpload&Token=',
         STATS_API: 'https://dev.orglife.com.tw/Api/DB?Type=Shopee_Box_Upd',
         SCAN_API: 'https://sp.spx.shopee.tw/sp-api/point/sorting/box_to/transport/scan',
-        DELAY_MS: 500,
+        DELAY_MS: 500, // 每一筆的間隔時間 (毫秒)
     };
 
     // ========== 全域變數 ==========
@@ -27,16 +28,11 @@
         total: 0
     };
 
-    let pageParams = {
-        dest_station_name: '',
-        to_path: ''
-    };
-
     // ========== 初始化 ==========
     async function init() {
         console.log('[裝箱單上傳] 初始化開始...');
         
-        // 1. 檢查 Token
+        // 1. 檢查 Token (保留您原本的邏輯)
         const token = getTokenFromUrl();
         if (!token) {
             console.warn('[裝箱單上傳] 未找到 Token');
@@ -52,54 +48,10 @@
             return;
         }
 
-        // 3. 嘗試從頁面取得參數
-        extractPageParams();
-
-        // 4. 注入UI
+        // 3. 注入UI
         injectUI();
 
         console.log('[裝箱單上傳] 初始化完成');
-        console.log('[裝箱單上傳] 頁面參數:', pageParams);
-    }
-
-    // ========== 從頁面提取參數 ==========
-    function extractPageParams() {
-        try {
-            // 嘗試從頁面的各種可能位置取得參數
-            
-            // 方法1: 從 localStorage
-            const storedStation = localStorage.getItem('dest_station_name');
-            const storedPath = localStorage.getItem('to_path');
-            
-            if (storedStation) pageParams.dest_station_name = storedStation;
-            if (storedPath) pageParams.to_path = storedPath;
-            
-            // 方法2: 從頁面元素（如果有的話）
-            const stationElement = document.querySelector('[data-station-name]');
-            const pathElement = document.querySelector('[data-to-path]');
-            
-            if (stationElement) {
-                pageParams.dest_station_name = stationElement.getAttribute('data-station-name');
-            }
-            if (pathElement) {
-                pageParams.to_path = pathElement.getAttribute('data-to-path');
-            }
-            
-            // 如果還是沒有，使用預設值
-            if (!pageParams.dest_station_name) {
-                pageParams.dest_station_name = 'SOC S';
-            }
-            if (!pageParams.to_path) {
-                pageParams.to_path = '美廉社 仁武仁孝店 > SOC S';
-            }
-            
-            console.log('[裝箱單上傳] 提取的頁面參數:', pageParams);
-        } catch (error) {
-            console.error('[裝箱單上傳] 提取參數失敗:', error);
-            // 使用預設值
-            pageParams.dest_station_name = 'SOC S';
-            pageParams.to_path = '美廉社 仁武仁孝店 > SOC S';
-        }
     }
 
     // ========== Token 處理 ==========
@@ -115,6 +67,7 @@
             return !result.includes('Invalid');
         } catch (error) {
             console.error('[裝箱單上傳] Token 驗證錯誤:', error);
+            // 若驗證伺服器掛掉，為了不影響工作，這邊暫時回傳 false 或可視情況改為 true
             return false;
         }
     }
@@ -138,30 +91,8 @@
         container.innerHTML = `
             <div style="max-width: 1200px; margin: 0 auto;">
                 <h3 style="margin: 0 0 15px 0; color: #28a745;">
-                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.4)</span>
+                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.5 修正版)</span>
                 </h3>
-                
-                <!-- 參數設定區 -->
-                <div style="background: #e7f3ff; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                    <details>
-                        <summary style="cursor: pointer; font-weight: bold; color: #0066cc;">⚙️ 進階設定（通常不需要修改）</summary>
-                        <div style="margin-top: 10px;">
-                            <label style="display: block; margin-bottom: 5px;">
-                                <strong>目的地站點：</strong>
-                                <input type="text" id="destStation" value="${pageParams.dest_station_name}" 
-                                       style="width: 100%; padding: 5px; margin-top: 3px;">
-                            </label>
-                            <label style="display: block; margin-top: 8px;">
-                                <strong>路徑：</strong>
-                                <input type="text" id="toPath" value="${pageParams.to_path}" 
-                                       style="width: 100%; padding: 5px; margin-top: 3px;">
-                            </label>
-                            <small style="color: #666; display: block; margin-top: 5px;">
-                                ℹ️ 這些參數已自動設定，除非上傳失敗，否則不需要修改
-                            </small>
-                        </div>
-                    </details>
-                </div>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;">
                     <div style="flex: 1;">
@@ -207,7 +138,6 @@
                     </div>
                 </div>
                 
-                <!-- 進度條 -->
                 <div id="progressContainer" style="display: none; margin-bottom: 10px;">
                     <div style="background: #e9ecef; border-radius: 5px; height: 30px; position: relative; overflow: hidden;">
                         <div id="progressBar" style="
@@ -229,7 +159,6 @@
                     </small>
                 </div>
                 
-                <!-- 日誌區 -->
                 <div style="margin-top: 10px;">
                     <strong>上傳日誌：</strong>
                     <textarea 
@@ -288,7 +217,7 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // ========== 核心上傳邏輯 ==========
+    // ========== 核心上傳邏輯 (修正重點) ==========
     async function startUpload() {
         const input = document.getElementById('boxNumberInput');
         const lines = input.value.split('\n')
@@ -303,10 +232,6 @@
         if (!confirm(`確定要上傳 ${lines.length} 筆裝箱單號嗎？`)) {
             return;
         }
-
-        // 更新參數（使用者可能修改了）
-        pageParams.dest_station_name = document.getElementById('destStation').value;
-        pageParams.to_path = document.getElementById('toPath').value;
 
         // 重置統計
         uploadStats = { success: 0, fail: 0, total: lines.length };
@@ -324,8 +249,6 @@
         // 開始上傳
         addLog('='.repeat(50));
         addLog(`開始上傳 ${lines.length} 筆裝箱單號`);
-        addLog(`目的地: ${pageParams.dest_station_name}`);
-        addLog(`路徑: ${pageParams.to_path}`);
         addLog('='.repeat(50));
 
         for (let i = 0; i < lines.length; i++) {
@@ -374,15 +297,13 @@
         }
     }
 
+    // 核心 API 呼叫 (此處已修正)
     async function uploadSingle(boxNumber) {
         try {
+            // 根據您的截圖，Payload 只需包含 to_number
+            // 伺服器會自動回傳 dest_station_name, to_path 等資訊，無需前端傳送
             const requestBody = {
-                to_number: boxNumber,
-                rfid: '',  // 根據你的成功案例，RFID 是空字串
-                dest_station_name: pageParams.dest_station_name,
-                to_path: pageParams.to_path,
-                ctime: Math.floor(Date.now() / 1000),
-                mtime: Math.floor(Date.now() / 1000)
+                to_number: boxNumber
             };
             
             const response = await fetch(CONFIG.SCAN_API, {
@@ -402,6 +323,7 @@
 
             const result = await response.json();
 
+            // 蝦皮 API 回傳 retcode: 0 代表成功
             if (result.retcode === 0) {
                 return { success: true };
             } else {
