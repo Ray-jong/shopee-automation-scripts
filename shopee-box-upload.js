@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         蝦皮裝箱單批次上傳
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  自動批次上傳裝箱單號到蝦皮後台
 // @author       YourName
 // @match        https://sp.spx.shopee.tw/outbound-management/pack-drop-off-to/scan-to-new*
@@ -52,7 +52,7 @@
 
         console.log('[裝箱單上傳] Token 驗證通過');
 
-        // 3. 直接注入上傳介面（移除 Cookie 檢查）
+        // 3. 直接注入上傳介面
         injectUI();
 
         console.log('[裝箱單上傳] 初始化完成');
@@ -95,7 +95,7 @@
         container.innerHTML = `
             <div style="max-width: 1200px; margin: 0 auto;">
                 <h3 style="margin: 0 0 15px 0; color: #28a745;">
-                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.2 - Cookie 檢測已移除)</span>
+                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.3 - RFID 已修正)</span>
                 </h3>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;">
@@ -285,11 +285,6 @@
                 } else {
                     uploadStats.fail++;
                     addLog(`❌ 失敗: ${boxNumber} - ${result.message}`);
-                    
-                    // 記錄詳細錯誤資訊（用於除錯）
-                    if (result.details) {
-                        addLog(`   詳細資訊: ${JSON.stringify(result.details)}`);
-                    }
                 }
             } catch (error) {
                 uploadStats.fail++;
@@ -327,18 +322,14 @@
 
     async function uploadSingle(boxNumber) {
         try {
-            addLog(`   發送 API 請求...`);
-            
             const requestBody = {
                 to_number: boxNumber,
-                rfid: '',
+                rfid: boxNumber,  // ✅ 修正：RFID 使用裝箱單號本身
                 dest_station_name: 'SOC S',
                 to_path: '美廉社 仁武仁孝店 > SOC S',
                 ctime: Math.floor(Date.now() / 1000),
                 mtime: Math.floor(Date.now() / 1000)
             };
-            
-            addLog(`   請求內容: ${JSON.stringify(requestBody)}`);
             
             const response = await fetch(CONFIG.SCAN_API, {
                 method: 'POST',
@@ -348,34 +339,27 @@
                 body: JSON.stringify(requestBody)
             });
 
-            addLog(`   HTTP 狀態: ${response.status} ${response.statusText}`);
-
             if (!response.ok) {
                 return { 
                     success: false, 
-                    message: `HTTP ${response.status}`,
-                    details: { status: response.status, statusText: response.statusText }
+                    message: `HTTP ${response.status}`
                 };
             }
 
             const result = await response.json();
-            addLog(`   API 回應: ${JSON.stringify(result)}`);
 
             if (result.retcode === 0) {
                 return { success: true };
             } else {
                 return { 
                     success: false, 
-                    message: result.message || '未知錯誤',
-                    details: result
+                    message: result.message || '未知錯誤'
                 };
             }
         } catch (error) {
-            addLog(`   例外錯誤: ${error.message}`);
             return { 
                 success: false, 
-                message: error.message,
-                details: { error: error.toString() }
+                message: error.message
             };
         }
     }
@@ -414,18 +398,16 @@
             addLog('📊 統計資料已上傳');
         } catch (error) {
             console.error('[裝箱單上傳] 統計上傳失敗:', error);
-            addLog(`⚠️ 統計上傳失敗: ${error.message}`);
         }
     }
 
     // ========== 執行初始化 ==========
-    // 增加延遲確保頁面完全載入
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(init, 1000); // 延遲 1 秒
+            setTimeout(init, 1000);
         });
     } else {
-        setTimeout(init, 1000); // 延遲 1 秒
+        setTimeout(init, 1000);
     }
 
 })();
