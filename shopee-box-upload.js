@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         蝦皮裝箱單批次上傳
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  自動批次上傳裝箱單號到蝦皮後台
-// @author       YourName
+// @author       OrgLife
 // @match        https://sp.spx.shopee.tw/outbound-management/pack-drop-off-to/scan-to-new*
 // @grant        none
 // @icon         https://sp.spx.shopee.tw/favicon.ico
@@ -17,7 +17,7 @@
         VALIDATE_API: 'https://dev.orglife.com.tw/Api/DB?Type=Token&App=ShopeeBoxUpload&Token=',
         STATS_API: 'https://dev.orglife.com.tw/Api/DB?Type=Shopee_Box_Upd',
         SCAN_API: 'https://sp.spx.shopee.tw/sp-api/point/sorting/box_to/transport/scan',
-        DELAY_MS: 500, // 每筆上傳之間的延遲（毫秒）
+        DELAY_MS: 500,
     };
 
     // ========== 全域變數 ==========
@@ -27,35 +27,79 @@
         total: 0
     };
 
+    let pageParams = {
+        dest_station_name: '',
+        to_path: ''
+    };
+
     // ========== 初始化 ==========
     async function init() {
-        console.log('[裝箱單上傳] 開始初始化...');
-        console.log('[裝箱單上傳] 當前頁面:', window.location.href);
+        console.log('[裝箱單上傳] 初始化開始...');
         
         // 1. 檢查 Token
         const token = getTokenFromUrl();
         if (!token) {
             console.warn('[裝箱單上傳] 未找到 Token');
-            alert('❌ 錯誤：未提供授權 Token\n\n請從系統主頁點擊按鈕進入此頁面。');
+            alert('❌ 未提供授權 Token\n\n請從系統主頁點擊按鈕進入。');
             return;
         }
-
-        console.log('[裝箱單上傳] Token:', token);
 
         // 2. 驗證 Token
         const isValid = await validateToken(token);
         if (!isValid) {
             console.warn('[裝箱單上傳] Token 驗證失敗');
-            alert('❌ 錯誤：Token 驗證失敗\n\n您可能沒有權限使用此功能，請聯絡管理員。');
+            alert('❌ Token 驗證失敗\n\n請聯絡管理員。');
             return;
         }
 
-        console.log('[裝箱單上傳] Token 驗證通過');
+        // 3. 嘗試從頁面取得參數
+        extractPageParams();
 
-        // 3. 直接注入上傳介面
+        // 4. 注入UI
         injectUI();
 
         console.log('[裝箱單上傳] 初始化完成');
+        console.log('[裝箱單上傳] 頁面參數:', pageParams);
+    }
+
+    // ========== 從頁面提取參數 ==========
+    function extractPageParams() {
+        try {
+            // 嘗試從頁面的各種可能位置取得參數
+            
+            // 方法1: 從 localStorage
+            const storedStation = localStorage.getItem('dest_station_name');
+            const storedPath = localStorage.getItem('to_path');
+            
+            if (storedStation) pageParams.dest_station_name = storedStation;
+            if (storedPath) pageParams.to_path = storedPath;
+            
+            // 方法2: 從頁面元素（如果有的話）
+            const stationElement = document.querySelector('[data-station-name]');
+            const pathElement = document.querySelector('[data-to-path]');
+            
+            if (stationElement) {
+                pageParams.dest_station_name = stationElement.getAttribute('data-station-name');
+            }
+            if (pathElement) {
+                pageParams.to_path = pathElement.getAttribute('data-to-path');
+            }
+            
+            // 如果還是沒有，使用預設值
+            if (!pageParams.dest_station_name) {
+                pageParams.dest_station_name = 'SOC S';
+            }
+            if (!pageParams.to_path) {
+                pageParams.to_path = '美廉社 仁武仁孝店 > SOC S';
+            }
+            
+            console.log('[裝箱單上傳] 提取的頁面參數:', pageParams);
+        } catch (error) {
+            console.error('[裝箱單上傳] 提取參數失敗:', error);
+            // 使用預設值
+            pageParams.dest_station_name = 'SOC S';
+            pageParams.to_path = '美廉社 仁武仁孝店 > SOC S';
+        }
     }
 
     // ========== Token 處理 ==========
@@ -77,7 +121,6 @@
 
     // ========== UI 注入 ==========
     function injectUI() {
-        // 建立主容器
         const container = document.createElement('div');
         container.id = 'boxUploadContainer';
         container.style.cssText = `
@@ -95,8 +138,30 @@
         container.innerHTML = `
             <div style="max-width: 1200px; margin: 0 auto;">
                 <h3 style="margin: 0 0 15px 0; color: #28a745;">
-                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.3 - RFID 已修正)</span>
+                    📦 裝箱單批次上傳 <span style="font-size: 14px; color: #666;">(v1.4)</span>
                 </h3>
+                
+                <!-- 參數設定區 -->
+                <div style="background: #e7f3ff; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                    <details>
+                        <summary style="cursor: pointer; font-weight: bold; color: #0066cc;">⚙️ 進階設定（通常不需要修改）</summary>
+                        <div style="margin-top: 10px;">
+                            <label style="display: block; margin-bottom: 5px;">
+                                <strong>目的地站點：</strong>
+                                <input type="text" id="destStation" value="${pageParams.dest_station_name}" 
+                                       style="width: 100%; padding: 5px; margin-top: 3px;">
+                            </label>
+                            <label style="display: block; margin-top: 8px;">
+                                <strong>路徑：</strong>
+                                <input type="text" id="toPath" value="${pageParams.to_path}" 
+                                       style="width: 100%; padding: 5px; margin-top: 3px;">
+                            </label>
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                ℹ️ 這些參數已自動設定，除非上傳失敗，否則不需要修改
+                            </small>
+                        </div>
+                    </details>
+                </div>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;">
                     <div style="flex: 1;">
@@ -176,16 +241,10 @@
             </div>
         `;
 
-        // 插入到頁面頂部
         document.body.insertBefore(container, document.body.firstChild);
-
-        // 調整頁面 padding 避免遮擋
         document.body.style.paddingTop = container.offsetHeight + 'px';
 
-        // 綁定事件
         bindEvents();
-
-        console.log('[裝箱單上傳] UI 已注入');
     }
 
     // ========== 事件綁定 ==========
@@ -195,18 +254,11 @@
         const clearLogBtn = document.getElementById('clearLogBtn');
         const clearAllBtn = document.getElementById('clearAllBtn');
 
-        // 監聽輸入變化
         input.addEventListener('input', updateLineCount);
-
-        // 開始上傳
         startBtn.addEventListener('click', startUpload);
-
-        // 清空日誌
         clearLogBtn.addEventListener('click', () => {
             document.getElementById('logDisplay').value = '';
         });
-
-        // 清空全部
         clearAllBtn.addEventListener('click', () => {
             if (confirm('確定要清空全部內容嗎？')) {
                 input.value = '';
@@ -219,7 +271,6 @@
         updateLineCount();
     }
 
-    // ========== 輔助函數 ==========
     function updateLineCount() {
         const input = document.getElementById('boxNumberInput');
         const lines = input.value.split('\n').filter(line => line.trim() !== '');
@@ -253,6 +304,10 @@
             return;
         }
 
+        // 更新參數（使用者可能修改了）
+        pageParams.dest_station_name = document.getElementById('destStation').value;
+        pageParams.to_path = document.getElementById('toPath').value;
+
         // 重置統計
         uploadStats = { success: 0, fail: 0, total: lines.length };
 
@@ -269,7 +324,8 @@
         // 開始上傳
         addLog('='.repeat(50));
         addLog(`開始上傳 ${lines.length} 筆裝箱單號`);
-        addLog(`API: ${CONFIG.SCAN_API}`);
+        addLog(`目的地: ${pageParams.dest_station_name}`);
+        addLog(`路徑: ${pageParams.to_path}`);
         addLog('='.repeat(50));
 
         for (let i = 0; i < lines.length; i++) {
@@ -291,10 +347,8 @@
                 addLog(`❌ 錯誤: ${boxNumber} - ${error.message}`);
             }
 
-            // 更新進度
             updateProgress(i + 1, lines.length);
 
-            // 延遲
             if (i < lines.length - 1) {
                 await sleep(CONFIG.DELAY_MS);
             }
@@ -324,9 +378,9 @@
         try {
             const requestBody = {
                 to_number: boxNumber,
-                rfid: boxNumber,  // ✅ 修正：RFID 使用裝箱單號本身
-                dest_station_name: 'SOC S',
-                to_path: '美廉社 仁武仁孝店 > SOC S',
+                rfid: '',  // 根據你的成功案例，RFID 是空字串
+                dest_station_name: pageParams.dest_station_name,
+                to_path: pageParams.to_path,
                 ctime: Math.floor(Date.now() / 1000),
                 mtime: Math.floor(Date.now() / 1000)
             };
