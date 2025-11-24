@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         蝦皮裝箱單批次上傳 (v3.2 橫向單線程版)
+// @name         蝦皮裝箱單批次上傳 (v3.3 頂部固定版)
 // @namespace    http://tampermonkey.net/
-// @version      3.2
-// @description  三欄式介面(左輸入/中日誌/右按鈕) + 極速單線程 + 嚴格授權
+// @version      3.3
+// @description  介面置頂 + 自動推擠內容 + 橫向三欄 + 極速單線程
 // @author       OrgLife / Fixed by Gemini
 // @match        https://sp.spx.shopee.tw/*
 // @grant        none
@@ -14,7 +14,7 @@
 
     // ========== 配置區 (單線程極速設定) ==========
     const CONFIG = {
-        // 隨機延遲 (毫秒) - 設定在安全範圍內的極速
+        // 隨機延遲 (毫秒)
         MIN_DELAY: 50,    
         MAX_DELAY: 150,   
         
@@ -26,7 +26,10 @@
         VALIDATE_API: 'https://dev.orglife.com.tw/Api/DB?Type=Token&App=ShopeeBoxUpload&Token=',
         STATS_API: 'https://dev.orglife.com.tw/Api/DB?Type=Shopee_Box_Upd',
         SCAN_API: 'https://sp.spx.shopee.tw/sp-api/point/sorting/box_to/transport/scan',
-        TARGET_URL_KEYWORD: 'outbound-management'
+        TARGET_URL_KEYWORD: 'outbound-management',
+        
+        // UI 設定
+        UI_HEIGHT: '220px' // 預設高度
     };
 
     // ========== 核心啟動邏輯 ==========
@@ -62,7 +65,7 @@
         } catch { return false; }
     }
 
-    // ========== UI 介面 (橫向三欄佈局) ==========
+    // ========== UI 介面 (頂部橫向佈局) ==========
     let uiInterval = null;
     let uploadStats = { success: 0, fail: 0, total: 0 };
 
@@ -73,7 +76,10 @@
             const isCorrect = window.location.href.includes(CONFIG.TARGET_URL_KEYWORD);
             const exists = document.getElementById('shopee-upload-container');
             if (isCorrect && !exists) injectUI(token);
-            else if (!isCorrect && exists) exists.remove();
+            else if (!isCorrect && exists) {
+                exists.remove();
+                document.body.style.marginTop = '0px'; // 恢復網頁原狀
+            }
         }, 1000);
     }
 
@@ -82,58 +88,65 @@
 
         const div = document.createElement('div');
         div.id = 'shopee-upload-container';
+        
+        // CSS 重點：position: fixed top: 0, width: 100%
         div.style.cssText = `
             position: fixed; 
-            top: 10px; 
-            left: 50%; 
-            transform: translateX(-50%);
-            width: 800px; 
-            height: 250px;
-            min-width: 600px; 
-            min-height: 200px;
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: ${CONFIG.UI_HEIGHT};
             background: #f8f9fa; 
-            padding: 10px; 
-            z-index: 99999; 
-            border: 1px solid #ccc;
-            border-radius: 8px; 
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3); 
+            padding: 10px 20px; 
+            z-index: 999999; 
+            border-bottom: 3px solid #28a745;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
             font-family: "Microsoft JhengHei", sans-serif; 
-            resize: both; 
-            overflow: hidden;
+            resize: vertical; /* 允許垂直縮放 */
+            overflow: auto;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
         `;
 
+        // 將網頁原本的內容往下推，避免被遮擋
+        document.body.style.marginTop = CONFIG.UI_HEIGHT;
+
+        // 監聽視窗大小改變 (resize)，同步調整網頁推擠的高度
+        new ResizeObserver(() => {
+             document.body.style.marginTop = div.style.height;
+        }).observe(div);
+
         div.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 2px solid #2e7d32; padding-bottom: 5px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #ddd;">
                 <h3 style="margin: 0; color: #2e7d32; font-size: 16px;">
-                    📦 裝箱單極速上傳 <span style="font-size: 12px; color: #666;">(v3.2 橫向單線程版)</span>
+                    📦 裝箱單極速上傳 <span style="font-size: 12px; color: #666;">(v3.3 頂部固定版)</span>
                 </h3>
                 <div style="font-size: 12px; color: #555;">
-                    狀態: <span id="statusText" style="font-weight: bold; color: blue;">待機</span>
+                    狀態: <span id="statusText" style="font-weight: bold; color: blue;">待機中</span>
                 </div>
             </div>
 
-            <div style="flex: 1; display: flex; gap: 10px; min-height: 0;">
+            <div style="flex: 1; display: flex; gap: 15px; min-height: 0;">
                 
-                <div style="flex: 1; display: flex; flex-direction: column;">
+                <div style="flex: 3.5; display: flex; flex-direction: column;">
                     <div style="font-size: 12px; font-weight: bold; color: #333; margin-bottom: 4px;">📥 裝箱單號輸入</div>
                     <textarea id="inputBox" placeholder="請貼上單號..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; resize: none; font-family: monospace; font-size: 13px;"></textarea>
                 </div>
 
-                <div style="flex: 1; display: flex; flex-direction: column;">
+                <div style="flex: 5; display: flex; flex-direction: column;">
                     <div style="font-size: 12px; font-weight: bold; color: #333; margin-bottom: 4px;">📝 上傳日誌</div>
                     <div id="consoleLog" style="flex: 1; background: #1e1e1e; color: #0f0; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-y: auto; white-space: pre-wrap;"></div>
                 </div>
 
-                <div style="width: 100px; display: flex; flex-direction: column; gap: 6px; padding-top: 20px;">
-                    <button id="runBtn" style="padding: 10px 0; background: #2e7d32; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">🚀 開始</button>
+                <div style="width: 120px; display: flex; flex-direction: column; gap: 8px; padding-top: 20px;">
+                    <button id="runBtn" style="padding: 12px 0; background: #2e7d32; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px;">🚀 開始</button>
                     <button id="clearLogBtn" style="padding: 8px 0; background: #ffc107; color: black; border: none; border-radius: 4px; cursor: pointer;">🗑 清日誌</button>
                     <button id="clearAllBtn" style="padding: 8px 0; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 清全部</button>
                 </div>
             </div>
         `;
-        document.body.appendChild(div);
+        document.body.prepend(div);
 
         document.getElementById('runBtn').onclick = () => startSequentialUpload(token);
         document.getElementById('clearLogBtn').onclick = () => { document.getElementById('consoleLog').innerHTML = ''; };
